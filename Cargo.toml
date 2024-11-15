@@ -1,0 +1,7 @@
+[workspace]
+members = [
+  "veavs"
+, "surrogate", "vemodel"]
+resolver = "2"
+
+
