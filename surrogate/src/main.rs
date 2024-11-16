@@ -1,10 +1,8 @@
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::http_client::HttpClientBuilder;
 use jsonrpsee::rpc_params;
-use meilisearch_sdk::client::Client;
 use parity_scale_codec::{Decode, Encode};
-// use serde::{Deserialize, Serialize};
-// use serde_json::Value;
+use tokio_postgres::{Client, NoTls};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
@@ -13,54 +11,186 @@ use vemodel::{
     PREFIX_SUBSPACE_KEY,
 };
 
+async fn setup_database(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+    // Create tables with proper schema matching the Rust structs
+    client.batch_execute("
+        CREATE TABLE IF NOT EXISTS subspaces (
+            id BIGINT PRIMARY KEY,
+            title VARCHAR NOT NULL,
+            slug VARCHAR NOT NULL,
+            description TEXT,
+            banner VARCHAR,
+            status SMALLINT NOT NULL,
+            weight SMALLINT NOT NULL,
+            created_time BIGINT NOT NULL
+        );
+        
+        CREATE TABLE IF NOT EXISTS articles (
+            id BIGINT PRIMARY KEY,
+            title VARCHAR NOT NULL,
+            content TEXT NOT NULL,
+            author_id BIGINT NOT NULL,
+            author_nickname VARCHAR NOT NULL,
+            subspace_id BIGINT NOT NULL,
+            ext_link VARCHAR,
+            status SMALLINT NOT NULL,
+            weight SMALLINT NOT NULL,
+            created_time BIGINT NOT NULL,
+            updated_time BIGINT NOT NULL,
+            FOREIGN KEY (subspace_id) REFERENCES subspaces(id)
+        );
+        
+        CREATE TABLE IF NOT EXISTS comments (
+            id BIGINT PRIMARY KEY,
+            content TEXT NOT NULL,
+            author_id BIGINT NOT NULL,
+            author_nickname VARCHAR NOT NULL,
+            post_id BIGINT NOT NULL,
+            status SMALLINT NOT NULL,
+            weight SMALLINT NOT NULL,
+            created_time BIGINT NOT NULL,
+            FOREIGN KEY (post_id) REFERENCES articles(id)
+        );
+    ").await?;
+    
+    Ok(())
+}
+
+async fn handle_database_operation(
+    client: &Client,
+    model: &str,
+    method: Method,
+    value: &serde_json::Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match (model, method) {
+        ("subspace", Method::Create | Method::Update) => {
+            let subspace: VeSubspace = serde_json::from_value(value.clone())?;
+            client.execute(
+                "INSERT INTO subspaces (id, title, slug, description, banner, status, weight, created_time)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 ON CONFLICT (id) DO UPDATE SET
+                    title = $2,
+                    slug = $3,
+                    description = $4,
+                    banner = $5,
+                    status = $6,
+                    weight = $7,
+                    created_time = $8",
+                &[
+                    &(subspace.id as i64),
+                    &subspace.title,
+                    &subspace.slug,
+                    &subspace.description,
+                    &subspace.banner,
+                    &(subspace.status as i16),
+                    &(subspace.weight as i16),
+                    &(subspace.created_time as i64),
+                ],
+            ).await?;
+            println!("Upserted subspace: {}", subspace.id);
+        },
+        ("article", Method::Create | Method::Update) => {
+            let article: VeArticle = serde_json::from_value(value.clone())?;
+            client.execute(
+                "INSERT INTO articles (id, title, content, author_id, author_nickname, subspace_id, 
+                                     ext_link, status, weight, created_time, updated_time)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                 ON CONFLICT (id) DO UPDATE SET
+                    title = $2,
+                    content = $3,
+                    author_id = $4,
+                    author_nickname = $5,
+                    subspace_id = $6,
+                    ext_link = $7,
+                    status = $8,
+                    weight = $9,
+                    created_time = $10,
+                    updated_time = $11",
+                &[
+                    &(article.id as i64),
+                    &article.title,
+                    &article.content,
+                    &(article.author_id as i64),
+                    &article.author_nickname,
+                    &(article.subspace_id as i64),
+                    &article.ext_link,
+                    &(article.status as i16),
+                    &(article.weight as i16),
+                    &(article.created_time as i64),
+                    &(article.updated_time as i64),
+                ],
+            ).await?;
+            println!("Upserted article: {}", article.id);
+        },
+        ("comment", Method::Create | Method::Update) => {
+            let comment: VeComment = serde_json::from_value(value.clone())?;
+            client.execute(
+                "INSERT INTO comments (id, content, author_id, author_nickname, post_id, 
+                                     status, weight, created_time)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 ON CONFLICT (id) DO UPDATE SET
+                    content = $2,
+                    author_id = $3,
+                    author_nickname = $4,
+                    post_id = $5,
+                    status = $6,
+                    weight = $7,
+                    created_time = $8",
+                &[
+                    &(comment.id as i64),
+                    &comment.content,
+                    &(comment.author_id as i64),
+                    &comment.author_nickname,
+                    &(comment.post_id as i64),
+                    &(comment.status as i16),
+                    &(comment.weight as i16),
+                    &(comment.created_time as i64),
+                ],
+            ).await?;
+            println!("Upserted comment: {}", comment.id);
+        },
+        (model, Method::Delete) => {
+            let id = value.as_i64().unwrap();
+            let table_name = match model {
+                "subspace" => "subspaces",
+                "article" => "articles",
+                "comment" => "comments",
+                _ => return Err("Invalid model type".into()),
+            };
+            let query = format!("DELETE FROM {} WHERE id = $1", table_name);
+            client.execute(&query, &[&id]).await?;
+            println!("Deleted {} record: {}", table_name, id);
+        },
+        _ => return Err("Invalid operation".into()),
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tx, mut rx) = mpsc::channel(100);
 
-    // Spawn a task for MeiliSearch indexing
+    // PostgreSQL connection
+    let postgres_config = "host=localhost port=5432 user=postgres password=your_password dbname=ve_db";
+    let (client, connection) = tokio_postgres::connect(postgres_config, NoTls).await?;
+
+    // Spawn connection handler
     tokio::spawn(async move {
-        let client = Client::new(
-            "http://localhost:7700",
-            // Some("QxU85pZKzdXRl8T89ST0hVKvDQkWXJ9h2Wx8E3ksz68"),
-            Some("123456"),
-        )
-        .unwrap();
-        // let index = client.index("users");
+        if let Err(e) = connection.await {
+            eprintln!("PostgreSQL connection error: {}", e);
+        }
+    });
 
+    // Set up database tables
+    setup_database(&client).await?;
+
+    // Spawn a task for PostgreSQL operations
+    let db_client = client.clone();
+    tokio::spawn(async move {
         while let Some((model, method, value)) = rx.recv().await {
-            let index = match model {
-                "subspace" => client.index("subspace"),
-                "article" => client.index("article"),
-                "comment" => client.index("comment"),
-                _ => client.index("article"),
-            };
-
-            match method {
-                Method::Create | Method::Update => {
-                    match index.add_or_update(&[value], Some("id")).await {
-                        Ok(task) => {
-                            println!("Document added to MeiliSearch, task id: {}", task.task_uid);
-                            // Optionally, wait for the task to complete
-                            match task.wait_for_completion(&client, None, None).await {
-                                Ok(task_info) => println!("Task completed: {:?}", task_info),
-                                Err(e) => eprintln!("Error waiting for task completion: {}", e),
-                            }
-                        }
-                        Err(e) => eprintln!("Error adding document to MeiliSearch: {}", e),
-                    }
-                }
-                Method::Delete => {
-                    match index.delete_documents(&[value]).await {
-                        Ok(task) => {
-                            // Optionally, wait for the task to complete
-                            match task.wait_for_completion(&client, None, None).await {
-                                Ok(task_info) => println!("Task completed: {:?}", task_info),
-                                Err(e) => eprintln!("Error waiting for task completion: {}", e),
-                            }
-                        }
-                        Err(e) => eprintln!("Error deleting document to MeiliSearch: {}", e),
-                    }
-                }
+            if let Err(e) = handle_database_operation(&db_client, &model, method, &value).await {
+                eprintln!("Database operation error: {}", e);
             }
         }
     });
@@ -79,14 +209,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ];
 
         let res: serde_json::Value = http_client.request("nucleus_post", params).await?;
-        println!("get from common key result: {:?}", res);
         let res = res.as_str().expect("a str res");
-        println!("str res: {}", res);
         let bytes = hex::decode(res).expect("Invalid hex string");
-        // let res = <Option<User>>::decode(&mut &bytes[..]);
         let res = <Result<Vec<(u64, Method, Vec<u8>)>, String>>::decode(&mut &bytes[..]).unwrap();
-        // let result: Result<Vec<(u64, Method, Vec<u8>)>, String> =
-        println!("res: {:?}", res);
 
         for (reqnum, method, key) in res? {
             match slice_to_array(&key[..5]).unwrap() {
@@ -94,38 +219,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let id = vec_to_u64(&key[5..]);
                     match method {
                         Method::Create | Method::Update => {
-                            let params =
-                                rpc_params![avs_id, "get_subspace", hex::encode(id.encode())];
-                            let res: serde_json::Value =
-                                http_client.request("nucleus_get", params).await?;
+                            let params = rpc_params![avs_id, "get_subspace", hex::encode(id.encode())];
+                            let res: serde_json::Value = http_client.request("nucleus_get", params).await?;
                             let res = res.as_str().expect("a str res");
-                            println!("subspace str res: {}", res);
                             let bytes = hex::decode(res).expect("Invalid hex string");
-                            let result =
-                                <Result<Option<VeSubspace>, String>>::decode(&mut &bytes[..])
-                                    .unwrap();
-                            match result {
-                                Ok(Some(sb)) => {
-                                    println!("subspace: {:?}", sb);
-                                    // Serialize the user to a JSON Value
-                                    let json_value = serde_json::to_value(&sb)?;
-
-                                    // Send the JSON Value through the channel
-                                    tx.send(("subspace", method, json_value)).await?;
-                                }
-                                Ok(None) => {
-                                    println!("none");
-                                }
-                                Err(err) => {
-                                    println!("{err}");
-                                }
+                            let result = <Result<Option<VeSubspace>, String>>::decode(&mut &bytes[..]).unwrap();
+                            if let Ok(Some(sb)) = result {
+                                let json_value = serde_json::to_value(&sb)?;
+                                tx.send(("subspace", method, json_value)).await?;
                             }
                         }
                         Method::Delete => {
-                            // Serialize the user to a JSON Value
                             let json_value = serde_json::to_value(&id)?;
-
-                            // Send the JSON Value through the channel
                             tx.send(("subspace", method, json_value)).await?;
                         }
                     }
@@ -134,38 +239,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let id = vec_to_u64(&key[5..]);
                     match method {
                         Method::Create | Method::Update => {
-                            let params =
-                                rpc_params![avs_id, "get_article", hex::encode(id.encode())];
-                            let res: serde_json::Value =
-                                http_client.request("nucleus_get", params).await?;
+                            let params = rpc_params![avs_id, "get_article", hex::encode(id.encode())];
+                            let res: serde_json::Value = http_client.request("nucleus_get", params).await?;
                             let res = res.as_str().expect("a str res");
-                            println!("article str res: {}", res);
                             let bytes = hex::decode(res).expect("Invalid hex string");
-                            let result =
-                                <Result<Option<VeArticle>, String>>::decode(&mut &bytes[..])
-                                    .unwrap();
-                            match result {
-                                Ok(Some(sb)) => {
-                                    println!("article: {:?}", sb);
-                                    // Serialize the user to a JSON Value
-                                    let json_value = serde_json::to_value(&sb)?;
-
-                                    // Send the JSON Value through the channel
-                                    tx.send(("article", method, json_value)).await?;
-                                }
-                                Ok(None) => {
-                                    println!("none");
-                                }
-                                Err(err) => {
-                                    println!("{err}");
-                                }
+                            let result = <Result<Option<VeArticle>, String>>::decode(&mut &bytes[..]).unwrap();
+                            if let Ok(Some(article)) = result {
+                                let json_value = serde_json::to_value(&article)?;
+                                tx.send(("article", method, json_value)).await?;
                             }
                         }
                         Method::Delete => {
-                            // Serialize the user to a JSON Value
                             let json_value = serde_json::to_value(&id)?;
-
-                            // Send the JSON Value through the channel
                             tx.send(("article", method, json_value)).await?;
                         }
                     }
@@ -174,38 +259,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let id = vec_to_u64(&key[5..]);
                     match method {
                         Method::Create | Method::Update => {
-                            let params =
-                                rpc_params![avs_id, "get_comment", hex::encode(id.encode())];
-                            let res: serde_json::Value =
-                                http_client.request("nucleus_get", params).await?;
+                            let params = rpc_params![avs_id, "get_comment", hex::encode(id.encode())];
+                            let res: serde_json::Value = http_client.request("nucleus_get", params).await?;
                             let res = res.as_str().expect("a str res");
-                            println!("comment str res: {}", res);
                             let bytes = hex::decode(res).expect("Invalid hex string");
-                            let result =
-                                <Result<Option<VeComment>, String>>::decode(&mut &bytes[..])
-                                    .unwrap();
-                            match result {
-                                Ok(Some(sb)) => {
-                                    println!("comment: {:?}", sb);
-                                    // Serialize the user to a JSON Value
-                                    let json_value = serde_json::to_value(&sb)?;
-
-                                    // Send the JSON Value through the channel
-                                    tx.send(("comment", method, json_value)).await?;
-                                }
-                                Ok(None) => {
-                                    println!("none");
-                                }
-                                Err(err) => {
-                                    println!("{err}");
-                                }
+                            let result = <Result<Option<VeComment>, String>>::decode(&mut &bytes[..]).unwrap();
+                            if let Ok(Some(comment)) = result {
+                                let json_value = serde_json::to_value(&comment)?;
+                                tx.send(("comment", method, json_value)).await?;
                             }
                         }
                         Method::Delete => {
-                            // Serialize the user to a JSON Value
                             let json_value = serde_json::to_value(&id)?;
-
-                            // Send the JSON Value through the channel
                             tx.send(("comment", method, json_value)).await?;
                         }
                     }
@@ -214,15 +279,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             sentinel = reqnum;
         }
-
-        // // Decode the SCALE-encoded result
-        // let user = User::decode(&mut &result[..])?;
-
-        // // Serialize the user to a JSON Value
-        // let json_value = serde_json::to_value(&user)?;
-
-        // // Send the JSON Value through the channel
-        // tx.send(json_value).await?;
 
         sleep(Duration::from_secs(5)).await;
     }
@@ -238,3 +294,4 @@ fn vec_to_u64(v: &[u8]) -> u64 {
 fn slice_to_array(slice: &[u8]) -> Result<&[u8; 5], &str> {
     slice.try_into().map_err(|_| "Slice must be 5 bytes long")
 }
+
