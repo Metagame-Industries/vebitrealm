@@ -9,7 +9,7 @@ pub enum Method {
 }
 
 #[derive(Debug, Decode, Encode, Deserialize, Serialize)]
-pub struct VeSubspace {
+pub struct BitUser {
     pub id: u64,
     pub title: String,
     pub slug: String,
@@ -21,7 +21,19 @@ pub struct VeSubspace {
 }
 
 #[derive(Debug, Decode, Encode, Deserialize, Serialize)]
-pub struct VeArticle {
+pub struct BitVideo {
+    pub id: u64,
+    pub title: String,
+    pub slug: String,
+    pub description: String,
+    pub banner: String,
+    pub status: i16,
+    pub weight: i16,
+    pub created_time: i64,
+}
+
+#[derive(Debug, Decode, Encode, Deserialize, Serialize)]
+pub struct BitLike {
     pub id: u64,
     pub title: String,
     pub content: String,
@@ -36,7 +48,7 @@ pub struct VeArticle {
 }
 
 #[derive(Debug, Decode, Encode, Deserialize, Serialize)]
-pub struct VeComment {
+pub struct BitComment {
     pub id: u64,
     pub content: String,
     pub author_id: u64,
