@@ -11,12 +11,9 @@ pub enum Method {
 #[derive(Debug, Decode, Encode, Deserialize, Serialize)]
 pub struct BitUser {
     pub id: u64,
-    pub title: String,
-    pub slug: String,
-    pub description: String,
-    pub banner: String,
-    pub status: i16,
-    pub weight: i16,
+    pub handle: String, // the tg handle
+    pub source: String, // default tg
+    pub nickname: String,
     pub created_time: i64,
 }
 
@@ -24,45 +21,34 @@ pub struct BitUser {
 pub struct BitVideo {
     pub id: u64,
     pub title: String,
-    pub slug: String,
     pub description: String,
-    pub banner: String,
-    pub status: i16,
-    pub weight: i16,
+    pub url: String,
+    pub banner: String, // banner pic url
     pub created_time: i64,
 }
 
 #[derive(Debug, Decode, Encode, Deserialize, Serialize)]
 pub struct BitLike {
     pub id: u64,
-    pub title: String,
-    pub content: String,
-    pub author_id: u64,
-    pub author_nickname: String,
-    pub subspace_id: u64,
-    pub ext_link: String,
-    pub status: i16,
-    pub weight: i16,
+    pub video_id: u64,
+    pub user_id: u64,
+    pub likenum: u64,
     pub created_time: i64,
-    pub updated_time: i64,
 }
 
 #[derive(Debug, Decode, Encode, Deserialize, Serialize)]
 pub struct BitComment {
     pub id: u64,
+    pub video_id: u64,
+    pub user_id: u64,
     pub content: String,
-    pub author_id: u64,
-    pub author_nickname: String,
-    pub post_id: u64,
-    pub status: i16,
-    pub weight: i16,
     pub created_time: i64,
 }
 
-// const PREFIX_USER_KEY: &[u8; 5] = b"veus:";
-pub const PREFIX_SUBSPACE_KEY: &[u8; 5] = b"vesb:";
-pub const PREFIX_ARTICLE_KEY: &[u8; 5] = b"vear:";
-pub const PREFIX_COMMENT_KEY: &[u8; 5] = b"veco:";
+pub const PREFIX_USER_KEY: &[u8; 5] = b"busr:";
+pub const PREFIX_VIDEO_KEY: &[u8; 5] = b"bvid:";
+pub const PREFIX_LIKE_KEY: &[u8; 5] = b"blik:";
+pub const PREFIX_COMMENT_KEY: &[u8; 5] = b"bcom:";
 
 pub const REQNUM_KEY: &[u8; 7] = b"_reqnum";
 pub const COMMON_KEY: &[u8; 7] = b"_common";

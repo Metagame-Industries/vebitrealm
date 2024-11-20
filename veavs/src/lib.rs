@@ -1,30 +1,19 @@
 use parity_scale_codec::{Decode, Encode};
-use sp_core::crypto::{Pair, Ss58Codec};
-use sp_core::sr25519::{Public, Signature};
 use std::isize;
 use vrs_core_sdk::{get, post, storage};
 
 use vemodel::{
-    Method, VeArticle, VeComment, VeSubspace, COMMON_KEY, PREFIX_ARTICLE_KEY, PREFIX_COMMENT_KEY,
-    PREFIX_SUBSPACE_KEY, REQNUM_KEY,
+    Method, BitUser, BitVideo, BitLike, BitComment, COMMON_KEY, PREFIX_USER_KEY, PREFIX_COMMENT_KEY,
+    PREFIX_VIDEO_KEY, PREFIX_LIKE_KEY, REQNUM_KEY,
 };
 
 // subspace
 #[post]
-pub fn add_subspace(
-    mut sb: VeSubspace,
-    account: String,
-    msg: String,
-    sig: String,
-) -> Result<(), String> {
-    if !validate(&account, &msg, &sig)? {
-        return Err("signature validation error".to_string());
-    };
-
-    let max_id = get_max_id(PREFIX_SUBSPACE_KEY);
+pub fn add_user(sb: BitUser) -> Result<(), String> {
+    let max_id = get_max_id(PREFIX_USER_KEY);
     // update the id field from the avs
     sb.id = max_id;
-    let key = build_key(PREFIX_SUBSPACE_KEY, max_id);
+    let key = build_key(PREFIX_USER_KEY, max_id);
     storage::put(&key, sb.encode()).map_err(|e| e.to_string())?;
 
     add_to_common_key(Method::Create, key)?;
@@ -33,18 +22,9 @@ pub fn add_subspace(
 }
 
 #[post]
-pub fn update_subspace(
-    sb: VeSubspace,
-    account: String,
-    msg: String,
-    sig: String,
-) -> Result<(), String> {
-    if !validate(&account, &msg, &sig)? {
-        return Err("signature validation error".to_string());
-    };
-
+pub fn update_user(sb: BitUser) -> Result<(), String> {
     let id = sb.id;
-    let key = build_key(PREFIX_SUBSPACE_KEY, id);
+    let key = build_key(PREFIX_USER_KEY, id);
     storage::put(&key, sb.encode()).map_err(|e| e.to_string())?;
 
     add_to_common_key(Method::Update, key)?;
@@ -53,12 +33,8 @@ pub fn update_subspace(
 }
 
 #[post]
-pub fn delete_subspace(id: u64, account: String, msg: String, sig: String) -> Result<(), String> {
-    if !validate(&account, &msg, &sig)? {
-        return Err("signature validation error".to_string());
-    };
-
-    let key = build_key(PREFIX_SUBSPACE_KEY, id);
+pub fn delete_user(id: u64) -> Result<(), String> {
+    let key = build_key(PREFIX_USER_KEY, id);
     storage::del(&key).map_err(|e| e.to_string())?;
 
     add_to_common_key(Method::Delete, key)?;
@@ -67,29 +43,20 @@ pub fn delete_subspace(id: u64, account: String, msg: String, sig: String) -> Re
 }
 
 #[get]
-pub fn get_subspace(id: u64) -> Result<Option<VeSubspace>, String> {
-    let key = build_key(PREFIX_SUBSPACE_KEY, id);
+pub fn get_user(id: u64) -> Result<Option<BitUser>, String> {
+    let key = build_key(PREFIX_USER_KEY, id);
     let r = storage::get(&key).map_err(|e| e.to_string())?;
-    let instance = r.map(|d| VeSubspace::decode(&mut &d[..]).unwrap());
+    let instance = r.map(|d| BitUser::decode(&mut &d[..]).unwrap());
     Ok(instance)
 }
 
-// article
+// video
 #[post]
-pub fn add_article(
-    mut sb: VeArticle,
-    account: String,
-    msg: String,
-    sig: String,
-) -> Result<(), String> {
-    if !validate(&account, &msg, &sig)? {
-        return Err("signature validation error".to_string());
-    };
-
-    let max_id = get_max_id(PREFIX_ARTICLE_KEY);
+pub fn add_video(mut sb: BitVideo) -> Result<(), String> {
+    let max_id = get_max_id(PREFIX_VIDEO_KEY);
     // update the id field from the avs
     sb.id = max_id;
-    let key = build_key(PREFIX_ARTICLE_KEY, max_id);
+    let key = build_key(PREFIX_VIDEO_KEY, max_id);
     storage::put(&key, sb.encode()).map_err(|e| e.to_string())?;
     add_to_common_key(Method::Create, key)?;
 
@@ -97,18 +64,9 @@ pub fn add_article(
 }
 
 #[post]
-pub fn update_article(
-    sb: VeArticle,
-    account: String,
-    msg: String,
-    sig: String,
-) -> Result<(), String> {
-    if !validate(&account, &msg, &sig)? {
-        return Err("signature validation error".to_string());
-    };
-
+pub fn update_video(sb: BitVideo) -> Result<(), String> {
     let id = sb.id;
-    let key = build_key(PREFIX_ARTICLE_KEY, id);
+    let key = build_key(PREFIX_VIDEO_KEY, id);
     storage::put(&key, sb.encode()).map_err(|e| e.to_string())?;
     add_to_common_key(Method::Update, key)?;
 
@@ -116,12 +74,8 @@ pub fn update_article(
 }
 
 #[post]
-pub fn delete_article(id: u64, account: String, msg: String, sig: String) -> Result<(), String> {
-    if !validate(&account, &msg, &sig)? {
-        return Err("signature validation error".to_string());
-    };
-
-    let key = build_key(PREFIX_ARTICLE_KEY, id);
+pub fn delete_video(id: u64) -> Result<(), String> {
+    let key = build_key(PREFIX_VIDEO_KEY, id);
     storage::del(&key).map_err(|e| e.to_string())?;
     add_to_common_key(Method::Delete, key)?;
 
@@ -129,25 +83,57 @@ pub fn delete_article(id: u64, account: String, msg: String, sig: String) -> Res
 }
 
 #[get]
-pub fn get_article(id: u64) -> Result<Option<VeArticle>, String> {
-    let key = build_key(PREFIX_ARTICLE_KEY, id);
+pub fn get_video(id: u64) -> Result<Option<BitVideo>, String> {
+    let key = build_key(PREFIX_VIDEO_KEY, id);
     let r = storage::get(&key).map_err(|e| e.to_string())?;
-    let instance = r.map(|d| VeArticle::decode(&mut &d[..]).unwrap());
+    let instance = r.map(|d| BitVideo::decode(&mut &d[..]).unwrap());
     Ok(instance)
 }
+
+// like
+#[post]
+pub fn add_like(mut sb: BitLike) -> Result<(), String> {
+    let max_id = get_max_id(PREFIX_LIKE_KEY);
+    // update the id field from the avs
+    sb.id = max_id;
+    let key = build_key(PREFIX_LIKE_KEY, max_id);
+    storage::put(&key, sb.encode()).map_err(|e| e.to_string())?;
+    add_to_common_key(Method::Create, key)?;
+
+    Ok(())
+}
+
+#[post]
+pub fn update_like(sb: BitLike) -> Result<(), String> {
+    let id = sb.id;
+    let key = build_key(PREFIX_LIKE_KEY, id);
+    storage::put(&key, sb.encode()).map_err(|e| e.to_string())?;
+    add_to_common_key(Method::Update, key)?;
+
+    Ok(())
+}
+
+#[post]
+pub fn delete_like(id: u64) -> Result<(), String> {
+    let key = build_key(PREFIX_LIKE_KEY, id);
+    storage::del(&key).map_err(|e| e.to_string())?;
+    add_to_common_key(Method::Delete, key)?;
+
+    Ok(())
+}
+
+#[get]
+pub fn get_like(id: u64) -> Result<Option<BitLike>, String> {
+    let key = build_key(PREFIX_LIKE_KEY, id);
+    let r = storage::get(&key).map_err(|e| e.to_string())?;
+    let instance = r.map(|d| BitLike::decode(&mut &d[..]).unwrap());
+    Ok(instance)
+}
+
 
 // comment
 #[post]
-pub fn add_comment(
-    mut sb: VeComment,
-    account: String,
-    msg: String,
-    sig: String,
-) -> Result<(), String> {
-    if !validate(&account, &msg, &sig)? {
-        return Err("signature validation error".to_string());
-    };
-
+pub fn add_comment(mut sb: BitComment) -> Result<(), String> {
     let max_id = get_max_id(PREFIX_COMMENT_KEY);
     // update the id field from the avs
     sb.id = max_id;
@@ -159,16 +145,7 @@ pub fn add_comment(
 }
 
 #[post]
-pub fn update_comment(
-    sb: VeComment,
-    account: String,
-    msg: String,
-    sig: String,
-) -> Result<(), String> {
-    if !validate(&account, &msg, &sig)? {
-        return Err("signature validation error".to_string());
-    };
-
+pub fn update_comment(sb: BitComment) -> Result<(), String> {
     let id = sb.id;
     let key = build_key(PREFIX_COMMENT_KEY, id);
     storage::put(&key, sb.encode()).map_err(|e| e.to_string())?;
@@ -178,11 +155,7 @@ pub fn update_comment(
 }
 
 #[post]
-pub fn delete_comment(id: u64, account: String, msg: String, sig: String) -> Result<(), String> {
-    if !validate(&account, &msg, &sig)? {
-        return Err("signature validation error".to_string());
-    };
-
+pub fn delete_comment(id: u64) -> Result<(), String> {
     let key = build_key(PREFIX_COMMENT_KEY, id);
     storage::del(&key).map_err(|e| e.to_string())?;
     add_to_common_key(Method::Delete, key)?;
@@ -191,10 +164,10 @@ pub fn delete_comment(id: u64, account: String, msg: String, sig: String) -> Res
 }
 
 #[get]
-pub fn get_comment(id: u64) -> Result<Option<VeComment>, String> {
+pub fn get_comment(id: u64) -> Result<Option<BitComment>, String> {
     let key = build_key(PREFIX_COMMENT_KEY, id);
     let r = storage::get(&key).map_err(|e| e.to_string())?;
-    let instance = r.map(|d| VeComment::decode(&mut &d[..]).unwrap());
+    let instance = r.map(|d| BitComment::decode(&mut &d[..]).unwrap());
     Ok(instance)
 }
 
@@ -307,26 +280,4 @@ fn get_reqnum() -> u64 {
     };
 
     reqnum
-}
-
-fn get_publickey_from_address(address: &str) -> Result<Public, String> {
-    Public::from_ss58check(address).map_err(|_| "check ss58 address error".to_string())
-}
-
-fn check_signature(sig: &str) -> Result<Signature, String> {
-    let signature_bytes = hex::decode(sig).map_err(|e| e.to_string())?;
-    let signature = sp_core::sr25519::Signature::try_from(signature_bytes.as_slice())
-        .map_err(|_| "error while parsing signature from string".to_string())?;
-    Ok(signature)
-}
-
-fn verify(sig: &Signature, message: &[u8], pubkey: &Public) -> bool {
-    // Verify the signature
-    sp_core::sr25519::Pair::verify(&sig, message, &pubkey)
-}
-
-fn validate(address: &str, sigstr: &str, msg: &str) -> Result<bool, String> {
-    let public_key = get_publickey_from_address(address)?;
-    let sig = check_signature(sigstr)?;
-    Ok(verify(&sig, msg.as_bytes(), &public_key))
 }
