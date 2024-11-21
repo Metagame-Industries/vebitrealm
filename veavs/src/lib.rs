@@ -3,13 +3,13 @@ use std::isize;
 use vrs_core_sdk::{get, post, storage};
 
 use vemodel::{
-    Method, BitUser, BitVideo, BitLike, BitComment, COMMON_KEY, PREFIX_USER_KEY, PREFIX_COMMENT_KEY,
-    PREFIX_VIDEO_KEY, PREFIX_LIKE_KEY, REQNUM_KEY,
+    BitComment, BitLike, BitUser, BitVideo, Method, COMMON_KEY, PREFIX_COMMENT_KEY,
+    PREFIX_LIKE_KEY, PREFIX_USER_KEY, PREFIX_VIDEO_KEY, REQNUM_KEY,
 };
 
 // subspace
 #[post]
-pub fn add_user(sb: BitUser) -> Result<(), String> {
+pub fn add_user(mut sb: BitUser) -> Result<(), String> {
     let max_id = get_max_id(PREFIX_USER_KEY);
     // update the id field from the avs
     sb.id = max_id;
@@ -130,7 +130,6 @@ pub fn get_like(id: u64) -> Result<Option<BitLike>, String> {
     Ok(instance)
 }
 
-
 // comment
 #[post]
 pub fn add_comment(mut sb: BitComment) -> Result<(), String> {
@@ -171,13 +170,13 @@ pub fn get_comment(id: u64) -> Result<Option<BitComment>, String> {
     Ok(instance)
 }
 
-#[get]
-pub fn check_all_range() -> Result<(), String> {
-    check_range(PREFIX_SUBSPACE_KEY);
-    check_range(PREFIX_ARTICLE_KEY);
-    check_range(PREFIX_COMMENT_KEY);
-    Ok(())
-}
+// #[get]
+// pub fn check_all_range() -> Result<(), String> {
+//     check_range(PREFIX_SUBSPACE_KEY);
+//     check_range(PREFIX_ARTICLE_KEY);
+//     check_range(PREFIX_COMMENT_KEY);
+//     Ok(())
+// }
 
 //
 //
@@ -241,7 +240,7 @@ fn get_max_id(prefix: &[u8; 5]) -> u64 {
 
     max_id
 }
-
+#[allow(dead_code)]
 fn check_range(prefix: &[u8; 5]) {
     match storage::get_range(&prefix, storage::Direction::Forward, 100).map_err(|e| e.to_string()) {
         Ok(vec) => {

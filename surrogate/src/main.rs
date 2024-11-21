@@ -8,17 +8,17 @@ use parity_scale_codec::{Decode, Encode};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
-use dotenv::dotenv;
+// use dotenv::dotenv;
 use std::env;
 
 use vemodel::{
-    Method, BitUser, BitVideo, BitLike, BitComment, COMMON_KEY, PREFIX_USER_KEY, PREFIX_COMMENT_KEY,
-    PREFIX_VIDEO_KEY, PREFIX_LIKE_KEY, REQNUM_KEY,
+    BitComment, BitLike, BitUser, BitVideo, Method, PREFIX_COMMENT_KEY, PREFIX_LIKE_KEY,
+    PREFIX_USER_KEY, PREFIX_VIDEO_KEY,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenv().ok();
+    // dotenv().ok();
     let meilisearch_addr = env::var("MEILISEARCH_ADDR").expect("MEILISEARCH_ADDR must be set");
     let verisense_addr = env::var("VERISENSE_ADDR").expect("VERISENSE_ADDR must be set");
 
@@ -103,168 +103,171 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 for (reqnum, method, key) in res? {
                     match slice_to_array(&key[..5]).unwrap() {
+                        PREFIX_USER_KEY => {
+                            let id = vec_to_u64(&key[5..]);
+                            match method {
+                                Method::Create | Method::Update => {
+                                    let params =
+                                        rpc_params![avs_id, "get_user", hex::encode(id.encode())];
+                                    let res: serde_json::Value =
+                                        http_client.request("nucleus_get", params).await?;
+                                    let res = res.as_str().expect("a str res");
+                                    println!("buser str res: {}", res);
+                                    let bytes = hex::decode(res).expect("Invalid hex string");
+                                    let result =
+                                        <Result<Option<BitUser>, String>>::decode(&mut &bytes[..])
+                                            .unwrap();
+                                    match result {
+                                        Ok(Some(sb)) => {
+                                            println!("buser: {:?}", sb);
+                                            // Serialize the user to a JSON Value
+                                            let json_value = serde_json::to_value(&sb)?;
 
-                PREFIX_USER_KEY => {
-                    let id = vec_to_u64(&key[5..]);
-                    match method {
-                        Method::Create | Method::Update => {
-                            let params =
-                                rpc_params![avs_id, "get_user", hex::encode(id.encode())];
-                            let res: serde_json::Value =
-                                http_client.request("nucleus_get", params).await?;
-                            let res = res.as_str().expect("a str res");
-                            println!("buser str res: {}", res);
-                            let bytes = hex::decode(res).expect("Invalid hex string");
-                            let result =
-                                <Result<Option<BitUser>, String>>::decode(&mut &bytes[..])
-                                    .unwrap();
-                            match result {
-                                Ok(Some(sb)) => {
-                                    println!("buser: {:?}", sb);
+                                            // Send the JSON Value through the channel
+                                            tx.send(("buser", method, json_value)).await?;
+                                        }
+                                        Ok(None) => {
+                                            println!("none");
+                                        }
+                                        Err(err) => {
+                                            println!("{err}");
+                                        }
+                                    }
+                                }
+                                Method::Delete => {
                                     // Serialize the user to a JSON Value
-                                    let json_value = serde_json::to_value(&sb)?;
+                                    let json_value = serde_json::to_value(&id)?;
 
                                     // Send the JSON Value through the channel
                                     tx.send(("buser", method, json_value)).await?;
                                 }
-                                Ok(None) => {
-                                    println!("none");
-                                }
-                                Err(err) => {
-                                    println!("{err}");
-                                }
                             }
                         }
-                        Method::Delete => {
-                            // Serialize the user to a JSON Value
-                            let json_value = serde_json::to_value(&id)?;
+                        PREFIX_VIDEO_KEY => {
+                            let id = vec_to_u64(&key[5..]);
+                            match method {
+                                Method::Create | Method::Update => {
+                                    let params =
+                                        rpc_params![avs_id, "get_video", hex::encode(id.encode())];
+                                    let res: serde_json::Value =
+                                        http_client.request("nucleus_get", params).await?;
+                                    let res = res.as_str().expect("a str res");
+                                    println!("bvideo str res: {}", res);
+                                    let bytes = hex::decode(res).expect("Invalid hex string");
+                                    let result =
+                                        <Result<Option<BitVideo>, String>>::decode(&mut &bytes[..])
+                                            .unwrap();
+                                    match result {
+                                        Ok(Some(sb)) => {
+                                            println!("video: {:?}", sb);
+                                            // Serialize the user to a JSON Value
+                                            let json_value = serde_json::to_value(&sb)?;
 
-                            // Send the JSON Value through the channel
-                            tx.send(("buser", method, json_value)).await?;
-                        }
-                    }
-                }
-                PREFIX_VIDEO_KEY => {
-                    let id = vec_to_u64(&key[5..]);
-                    match method {
-                        Method::Create | Method::Update => {
-                            let params =
-                                rpc_params![avs_id, "get_video", hex::encode(id.encode())];
-                            let res: serde_json::Value =
-                                http_client.request("nucleus_get", params).await?;
-                            let res = res.as_str().expect("a str res");
-                            println!("bvideo str res: {}", res);
-                            let bytes = hex::decode(res).expect("Invalid hex string");
-                            let result =
-                                <Result<Option<BitVideo>, String>>::decode(&mut &bytes[..])
-                                    .unwrap();
-                            match result {
-                                Ok(Some(sb)) => {
-                                    println!("video: {:?}", sb);
+                                            // Send the JSON Value through the channel
+                                            tx.send(("bvideo", method, json_value)).await?;
+                                        }
+                                        Ok(None) => {
+                                            println!("none");
+                                        }
+                                        Err(err) => {
+                                            println!("{err}");
+                                        }
+                                    }
+                                }
+                                Method::Delete => {
                                     // Serialize the user to a JSON Value
-                                    let json_value = serde_json::to_value(&sb)?;
+                                    let json_value = serde_json::to_value(&id)?;
 
                                     // Send the JSON Value through the channel
                                     tx.send(("bvideo", method, json_value)).await?;
                                 }
-                                Ok(None) => {
-                                    println!("none");
-                                }
-                                Err(err) => {
-                                    println!("{err}");
-                                }
                             }
                         }
-                        Method::Delete => {
-                            // Serialize the user to a JSON Value
-                            let json_value = serde_json::to_value(&id)?;
+                        PREFIX_LIKE_KEY => {
+                            let id = vec_to_u64(&key[5..]);
+                            match method {
+                                Method::Create | Method::Update => {
+                                    let params =
+                                        rpc_params![avs_id, "get_like", hex::encode(id.encode())];
+                                    let res: serde_json::Value =
+                                        http_client.request("nucleus_get", params).await?;
+                                    let res = res.as_str().expect("a str res");
+                                    println!("blike str res: {}", res);
+                                    let bytes = hex::decode(res).expect("Invalid hex string");
+                                    let result =
+                                        <Result<Option<BitLike>, String>>::decode(&mut &bytes[..])
+                                            .unwrap();
+                                    match result {
+                                        Ok(Some(sb)) => {
+                                            println!("like: {:?}", sb);
+                                            // Serialize the user to a JSON Value
+                                            let json_value = serde_json::to_value(&sb)?;
 
-                            // Send the JSON Value through the channel
-                            tx.send(("bvideo", method, json_value)).await?;
-                        }
-                    }
-                }
-                PREFIX_LIKE_KEY => {
-                    let id = vec_to_u64(&key[5..]);
-                    match method {
-                        Method::Create | Method::Update => {
-                            let params =
-                                rpc_params![avs_id, "get_like", hex::encode(id.encode())];
-                            let res: serde_json::Value =
-                                http_client.request("nucleus_get", params).await?;
-                            let res = res.as_str().expect("a str res");
-                            println!("blike str res: {}", res);
-                            let bytes = hex::decode(res).expect("Invalid hex string");
-                            let result =
-                                <Result<Option<BitLike>, String>>::decode(&mut &bytes[..])
-                                    .unwrap();
-                            match result {
-                                Ok(Some(sb)) => {
-                                    println!("like: {:?}", sb);
+                                            // Send the JSON Value through the channel
+                                            tx.send(("blike", method, json_value)).await?;
+                                        }
+                                        Ok(None) => {
+                                            println!("none");
+                                        }
+                                        Err(err) => {
+                                            println!("{err}");
+                                        }
+                                    }
+                                }
+                                Method::Delete => {
                                     // Serialize the user to a JSON Value
-                                    let json_value = serde_json::to_value(&sb)?;
+                                    let json_value = serde_json::to_value(&id)?;
 
                                     // Send the JSON Value through the channel
                                     tx.send(("blike", method, json_value)).await?;
                                 }
-                                Ok(None) => {
-                                    println!("none");
-                                }
-                                Err(err) => {
-                                    println!("{err}");
-                                }
                             }
                         }
-                        Method::Delete => {
-                            // Serialize the user to a JSON Value
-                            let json_value = serde_json::to_value(&id)?;
-
-                            // Send the JSON Value through the channel
-                            tx.send(("blike", method, json_value)).await?;
-                        }
-                    }
-                }
-                PREFIX_COMMENT_KEY => {
-                    let id = vec_to_u64(&key[5..]);
-                    match method {
-                        Method::Create | Method::Update => {
-                            let params =
-                                rpc_params![avs_id, "get_comment", hex::encode(id.encode())];
-                            let res: serde_json::Value =
-                                http_client.request("nucleus_get", params).await?;
-                            let res = res.as_str().expect("a str res");
-                            println!("comment str res: {}", res);
-                            let bytes = hex::decode(res).expect("Invalid hex string");
-                            let result =
-                                <Result<Option<BitComment>, String>>::decode(&mut &bytes[..])
+                        PREFIX_COMMENT_KEY => {
+                            let id = vec_to_u64(&key[5..]);
+                            match method {
+                                Method::Create | Method::Update => {
+                                    let params = rpc_params![
+                                        avs_id,
+                                        "get_comment",
+                                        hex::encode(id.encode())
+                                    ];
+                                    let res: serde_json::Value =
+                                        http_client.request("nucleus_get", params).await?;
+                                    let res = res.as_str().expect("a str res");
+                                    println!("comment str res: {}", res);
+                                    let bytes = hex::decode(res).expect("Invalid hex string");
+                                    let result = <Result<Option<BitComment>, String>>::decode(
+                                        &mut &bytes[..],
+                                    )
                                     .unwrap();
-                            match result {
-                                Ok(Some(sb)) => {
-                                    println!("bcomment: {:?}", sb);
+                                    match result {
+                                        Ok(Some(sb)) => {
+                                            println!("bcomment: {:?}", sb);
+                                            // Serialize the user to a JSON Value
+                                            let json_value = serde_json::to_value(&sb)?;
+
+                                            // Send the JSON Value through the channel
+                                            tx.send(("bcomment", method, json_value)).await?;
+                                        }
+                                        Ok(None) => {
+                                            println!("none");
+                                        }
+                                        Err(err) => {
+                                            println!("{err}");
+                                        }
+                                    }
+                                }
+                                Method::Delete => {
                                     // Serialize the user to a JSON Value
-                                    let json_value = serde_json::to_value(&sb)?;
+                                    let json_value = serde_json::to_value(&id)?;
 
                                     // Send the JSON Value through the channel
                                     tx.send(("bcomment", method, json_value)).await?;
                                 }
-                                Ok(None) => {
-                                    println!("none");
-                                }
-                                Err(err) => {
-                                    println!("{err}");
-                                }
                             }
                         }
-                        Method::Delete => {
-                            // Serialize the user to a JSON Value
-                            let json_value = serde_json::to_value(&id)?;
-
-                            // Send the JSON Value through the channel
-                            tx.send(("bcomment", method, json_value)).await?;
-                        }
-                    }
-                }
-                         _ => {}
+                        _ => {}
                     }
                     sentinel = reqnum;
                 }

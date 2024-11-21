@@ -1,0 +1,1 @@
+MEILISEARCH_ADDR=localhost VERISENSE_ADDR=localhost target/release/surrogate

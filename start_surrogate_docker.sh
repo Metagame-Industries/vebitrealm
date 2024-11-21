@@ -1,0 +1,1 @@
+MEILISEARCH_ADDR=meilisearch_1 VERISENSE_ADDR=verisense_1 target/release/surrogate
