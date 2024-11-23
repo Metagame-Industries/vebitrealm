@@ -1,0 +1,32 @@
+Debug Flow:
+
+
+1. 安装 docker desktop
+
+2. 下载文件 https://github.com/Metagame-Industries/vebitrealm/blob/meilisearch/dc-testmode.yml
+
+3. 执行 docker compose -f dc-testmode.yml up
+
+4. 打开 https://polkadot.js.org/apps/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/extrinsics
+选择 nucleus -> mockRegister
+填入参数：5FsXfPrUDqq6abYccExCTUxyzjYaaYTr5utLx2wwdBv1m8R8
+
+提交交易，等成功。
+
+5. 开始测试：
+curl localhost:9944 -H 'Content-Type: application/json' -XPOST -d '{"jsonrpc":"2.0", "id":"whatever", "method":"nucleus_post", "params": ["5FsXfPrUDqq6abYccExCTUxyzjYaaYTr5utLx2wwdBv1m8R8", "add_user", "01000000000000004c78646e6468616865756e636864616865696e642074656c656772616d1c6d696b65313233d202964900000000"]}'
+
+
+6. 等几秒在 http://localhost:7700/ 看内容。masterKey = 123456
+
+7. meilisearch的API文档在这里：https://www.meilisearch.com/docs/reference/api/search
+
+8. Verisense AVS 架构文档在这里：https://docs.google.com/presentation/d/1WTKquJmjxIEBqLZQvLwFn-SypjoVHsQ1aD3My0Oeaa0/edit?usp=sharing
+
+
+前端自行翻译最后两步。
+
+
+
+
+
