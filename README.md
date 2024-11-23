@@ -52,12 +52,12 @@ curl localhost:9944 -H 'Content-Type: application/json' -XPOST -d '{"jsonrpc":"2
 Comment
 
 curl localhost:9944 -H 'Content-Type: application/json' -XPOST -d '{"jsonrpc":"2.0", "id":"whatever", "method":"nucleus_post", "params": ["5FsXfPrUDqq6abYccExCTUxyzjYaaYTr5utLx2wwdBv1m8R8", "add_comment", "0100000000000000640000000000000003000000000000004469206c696b65207468697320766964656fd202964900000000"]}'
-
+```
 
 
 ## APPENDIX: Upload Video to IPFS
 
-```
+
 Uploading a video file to IPFS involves adding the file to the IPFS network using an IPFS node or an API like Infura or Web3.Storage. Here's an example using the `ipfs-http-client` JavaScript library:
 
 ### Prerequisites
